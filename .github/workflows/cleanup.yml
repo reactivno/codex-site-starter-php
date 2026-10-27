@@ -1,0 +1,33 @@
+name: Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Удаление папки стенда
+        # Чистим всегда, не глядя на флаг merged:
+        # у смерженного PR payload пустой.
+        continue-on-error: true
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          AUTH="x-access-token:${GITHUB_TOKEN}"
+          REMOTE="https://${AUTH}@github.com/${GITHUB_REPOSITORY}.git"
+          git clone --depth 1 --branch gh-pages "$REMOTE" pages
+          cd pages
+          rm -rf "pr-${PR}"
+          git -c user.name=github-actions -c user.email=actions@github.com \
+            commit -am "cleanup: pr-${PR}" || exit 0
+          git push

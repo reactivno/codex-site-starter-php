@@ -1,0 +1,63 @@
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# содержимое нужно, чтобы пушить в gh-pages; PR — чтобы писать комментарий
+permissions:
+  contents: write
+  pull-requests: write
+
+# пуши в gh-pages из разных PR идут по очереди, иначе ветка конфликтует
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+
+      - name: Проверка синтаксиса PHP
+        run: |
+          find . -name '*.php' -not -path './.git/*' -print0 \
+            | xargs -0 -r -n1 php -l
+
+      - name: Сборка статики
+        # Pages не запускает PHP: php/ на стенд не кладём.
+        run: |
+          rsync -a \
+            --exclude '.git' --exclude '.github' --exclude '.gitignore' \
+            --exclude '.env*' --exclude '*.md' --exclude 'php' \
+            ./ _site/
+
+      - name: Публикация стенда
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./_site
+          destination_dir: pr-${{ github.event.pull_request.number }}
+          keep_files: true
+
+      - name: Ссылка на стенд в PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          OWNER="${OWNER,,}"
+          REPO="${REPO,,}"
+          if [ "$REPO" = "${OWNER}.github.io" ]; then
+            BASE="https://${OWNER}.github.io"
+          else
+            BASE="https://${OWNER}.github.io/${REPO}"
+          fi
+          gh pr comment "$PR" --body "Стенд: ${BASE}/pr-${PR}/"
