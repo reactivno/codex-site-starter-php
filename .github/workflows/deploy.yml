@@ -72,19 +72,42 @@ jobs:
             scripts/build.php
             scripts/check.php
 
+      - name: Проверка WARMUP_TOKEN
+        # Без токена прогрев и prune недоступны: лучше упасть здесь, чем
+        # выложить сайт с кэшем, который не обновить.
+        env:
+          WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}
+        run: |
+          if [ -z "$WARMUP_TOKEN" ]; then
+            echo "секрет WARMUP_TOKEN не задан"
+            exit 1
+          fi
+
       - name: Прогрев кэша
-        # Apache отдаёт готовый HTML напрямую: без прогрева правка шаблона
-        # не долетит до посетителя, старые файлы останутся в cache/.
+        # Apache отдаёт готовый HTML из cache/ напрямую: без прогрева правка
+        # шаблона не долетит до посетителя. Число страниц — из count индекса,
+        # прогреваем ровно столько, сколько страниц в data/index.json.
         env:
           SITE_URL: ${{ vars.SITE_URL }}
           WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}
         run: |
-          for from in $(seq 0 500 6000); do
-            answer=$(curl -fsS \
-              "${SITE_URL}/scripts/warmup.php?token=${WARMUP_TOKEN}&from=${from}&limit=500")
+          set -e
+          index=data/index.json
+          count=$(php -r '
+            $d = json_decode(file_get_contents($argv[1]), true);
+            echo (int)($d["count"] ?? 0);
+          ' "$index")
+          if [ "$count" -le 0 ]; then
+            echo "в индексе нет страниц: count=$count"
+            exit 1
+          fi
+          for ((from=0; from<count; from+=500)); do
+            answer=$(curl -fsS -H "X-Warmup-Token: ${WARMUP_TOKEN}" \
+              "${SITE_URL}/scripts/warmup.php?from=${from}&limit=500")
             echo "$from: $answer"
             case "$answer" in
-              *"готово: 0,"*) break ;;
+              *"ошибок: 0"*) ;;
+              *) echo "прогрев вернул ошибки"; exit 1 ;;
             esac
           done
 
@@ -95,6 +118,9 @@ jobs:
           SITE_URL: ${{ vars.SITE_URL }}
           WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}
         run: |
-          answer=$(curl -fsS \
-            "${SITE_URL}/scripts/warmup.php?token=${WARMUP_TOKEN}&prune=1")
+          set -e
+          # curl -f + set -e: при 403 (нет/другой токен) и при 500 (пустой
+          # индекс) шаг падает сам, дополнительно ловить нечего.
+          answer=$(curl -fsS -H "X-Warmup-Token: ${WARMUP_TOKEN}" \
+            "${SITE_URL}/scripts/warmup.php?prune=1")
           echo "$answer"

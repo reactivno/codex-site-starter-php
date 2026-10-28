@@ -35,8 +35,10 @@ if ($isCli) {
     header('X-Robots-Tag: noindex');
     header('Content-Type: text/plain; charset=utf-8');
 
+    // Токен — только в заголовке X-Warmup-Token. В query-строке токен оказался бы
+    // в логах сервера (REQUEST_URI) и в истории браузера.
     $expected = env_value('WARMUP_TOKEN');
-    $given = (string) ($_GET['token'] ?? '');
+    $given = (string) ($_SERVER['HTTP_X_WARMUP_TOKEN'] ?? '');
     if ($expected === '' || !hash_equals($expected, $given)) {
         http_response_code(403);
         echo "403 Forbidden\n";
