@@ -178,6 +178,18 @@ foreach ($index['pages'] as $entry) {
 }
 ksort($entries);
 
+// canonical запекается на шаге split-data. Если данные собраны с другим
+// --site-url, страница уедет на стенд с localhost в canonical — лучше упасть сразу.
+$firstPath = (string) array_key_first($entries);
+$firstJson = $firstPath === '' ? false : @file_get_contents(data_file($firstPath));
+$firstPage = $firstJson === false ? null : json_decode($firstJson, true);
+$canonical = is_array($firstPage) ? (string) ($firstPage['_canonical'] ?? '') : '';
+if ($canonical !== '' && !str_starts_with($canonical, $siteUrl)) {
+    fwrite(STDERR, 'данные собраны с адресом "' . $canonical . '", а сборка ждёт "' . $siteUrl
+        . "\": перезапустите scripts/split-data.php с тем же --site-url\n");
+    exit(1);
+}
+
 $selected = [];
 if (!$sample && $changedFrom === '') {
     $selected = array_keys($entries); // полная сборка
