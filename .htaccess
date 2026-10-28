@@ -4,6 +4,11 @@
 Options -Indexes -MultiViews
 DirectoryIndex index.php
 
+# Dotfiles (.ftp-deploy-sync-state.json, .env и т.п.) наружу не отдаются.
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
@@ -15,12 +20,24 @@ DirectoryIndex index.php
   RewriteCond %{REQUEST_URI} !^/$
   RewriteRule ^(.+)/$ /$1 [R=301,L]
 
-  # служебное закрыто; внутренний rewrite кэша не задеваем
+  # http -> https только вне localhost: не ломать локальную проверку и reverse-proxy.
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteCond %{HTTP_HOST} !^localhost
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+  # служебное закрыто; внутренний rewrite кэша не задеваем.
+  # REDIRECT_CACHE_HIT: после внутреннего редиректа Apache префиксует переменные
+  # окружения, поэтому на втором проходе ENV:CACHE_HIT уже не видно.
   # исключение — прогрев: деплой вызывает его по HTTP (SSH и cron нет),
   # доступ закрыт токеном внутри скрипта
-  RewriteCond %{ENV:CACHE_HIT} !=1
+  RewriteCond %{ENV:REDIRECT_CACHE_HIT} !=1
   RewriteCond %{REQUEST_URI} !^/scripts/warmup\.php$
   RewriteRule ^(?:cache|data|lib|scripts|templates|partials)/ - [F]
+
+  # быстрый путь для главной: не гонять / через PHP каждый раз
+  RewriteCond %{DOCUMENT_ROOT}/cache/home.html -f
+  RewriteRule ^$ cache/home.html [L,E=CACHE_HIT:1]
 
   # быстрый путь: готовый HTML из кэша, без PHP
   RewriteCond %{DOCUMENT_ROOT}/cache/$1.html -f
