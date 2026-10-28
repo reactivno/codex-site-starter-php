@@ -20,6 +20,10 @@ const HOME_PATH = 'home';
 // роутер — этим списком, чтобы запрет работал и на php -S, где .htaccess не читается.
 const DENY_PREFIXES = ['cache', 'data', 'lib', 'scripts', 'templates', 'partials'];
 
+// Единственное исключение из запрета scripts/: деплой дёргает прогрев по HTTP,
+// потому что SSH и cron на хостинге нет. Доступ закрыт токеном внутри файла.
+const WARMUP_ENTRY = 'scripts/warmup.php';
+
 // Имена в корне сайта: страница не может занять такой адрес.
 const RESERVED_SEGMENTS = [
     'cache', 'data', 'lib', 'scripts', 'templates', 'partials',

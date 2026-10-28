@@ -75,8 +75,12 @@ if ($path === '') {
 // Статика и запреты: воспроизводим поведение .htaccess руками.
 if (PHP_SAPI === 'cli-server') {
     $relative = ltrim($path, '/');
+    $isWarmupEntry = $relative === WARMUP_ENTRY;
 
     foreach (DENY_PREFIXES as $prefix) {
+        if ($isWarmupEntry) {
+            break;
+        }
         if ($relative === $prefix || str_starts_with($relative, $prefix . '/')) {
             http_response_code(403);
             header('Content-Type: text/plain; charset=utf-8');

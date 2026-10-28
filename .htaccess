@@ -16,7 +16,10 @@ DirectoryIndex index.php
   RewriteRule ^(.+)/$ /$1 [R=301,L]
 
   # служебное закрыто; внутренний rewrite кэша не задеваем
+  # исключение — прогрев: деплой вызывает его по HTTP (SSH и cron нет),
+  # доступ закрыт токеном внутри скрипта
   RewriteCond %{ENV:CACHE_HIT} !=1
+  RewriteCond %{REQUEST_URI} !^/scripts/warmup\.php$
   RewriteRule ^(?:cache|data|lib|scripts|templates|partials)/ - [F]
 
   # быстрый путь: готовый HTML из кэша, без PHP
