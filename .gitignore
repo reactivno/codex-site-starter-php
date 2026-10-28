@@ -4,6 +4,14 @@ Thumbs.db
 node_modules/
 .vibe-wise
 
+# локальные артефакты агентов и state файла синхронизации FTP:
+# не должны попасть ни в git, ни на хостинг
+.pi-subagents/
+.ftp-deploy-sync-state.json
+
+# рабочий архив проекта в корне
+codex-site-starter-js.zip
+
 # генерируется рендером и сборкой стенда
 cache/
 _site/
