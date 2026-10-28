@@ -63,6 +63,21 @@ function log_once(string $message): void
     }
 }
 
+// Адрес 301 с учётом SITE_BASE: base пуст -> "/" или "/path", иначе "/base/path".
+function redirect_target(string $base, string $path = ''): string
+{
+    return $base . '/' . $path;
+}
+
+function redirect_301(string $location): never
+{
+    http_response_code(301);
+    header('Location: ' . $location);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "301 Moved Permanently\n";
+    exit;
+}
+
 $requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
 $path = rawurldecode((string) (parse_url($requestUri, PHP_URL_PATH) ?? '/'));
 
@@ -96,6 +111,16 @@ if (PHP_SAPI === 'cli-server') {
 
     if ($relative !== '' && is_file(__DIR__ . '/' . $relative)) {
         return false; // пусть встроенный сервер отдаст файл сам
+    }
+
+    // Те же 301, что Apache в .htaccess: /home и /index.html -> /, слэш на конце снимаем.
+    // роутер ниже отдавал бы 200, а это канонически не тот адрес.
+    $normalizedPath = trim($path, '/');
+    if ($normalizedPath === 'home' || $normalizedPath === 'index.html') {
+        redirect_301(redirect_target($base));
+    }
+    if ($path !== '/' && str_ends_with($path, '/') && $normalizedPath !== '') {
+        redirect_301(redirect_target($base, $normalizedPath));
     }
 }
 

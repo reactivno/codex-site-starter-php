@@ -16,7 +16,7 @@ const INDEX_FILE = ROOT_DIR . '/data/index.json';
 const DEFAULT_OUT = '_site';
 const SAMPLE_PER_TYPE = 2;
 
-const STATIC_DIRS = ['css', 'js'];
+const STATIC_DIRS = ['css', 'js', 'assets'];
 
 // Разделы, которые на стенде закрыты от индексации: стенд — копия прода.
 const STAND_ROBOTS = "User-agent: *\nDisallow: /\n";
@@ -276,7 +276,10 @@ write_out($outDir . '/sitemap.xml', sitemap_xml(array_map(
 write_out($outDir . '/robots.txt', STAND_ROBOTS);
 
 foreach (STATIC_DIRS as $dir) {
-    copy_tree(ROOT_DIR . '/' . $dir, $outDir . '/' . $dir);
+    // assets/ может не существовать в проекте: копируем только наличествующие каталоги.
+    if (is_dir(ROOT_DIR . '/' . $dir)) {
+        copy_tree(ROOT_DIR . '/' . $dir, $outDir . '/' . $dir);
+    }
 }
 
 say('собрано: ' . $rendered . ', ошибок: ' . $failed);

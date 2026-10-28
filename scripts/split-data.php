@@ -248,6 +248,8 @@ if ($errors !== []) {
 }
 
 $today = new DateTimeImmutable('today');
+// lastmod «сегодня» по UTC ночью по Москве формально в будущем: допуск на сутки вперёд.
+$lastmodLimit = $today->modify('+1 day');
 $pages = [];
 $pathFirst = [];
 $titleFirst = [];
@@ -344,7 +346,7 @@ while (($row = fgetcsv($handle, 0, $delimiter, '"', '')) !== false) {
     $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $lastmod);
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $lastmod) !== 1 || $parsed === false || $parsed->format('Y-m-d') !== $lastmod) {
         add_error('строка ' . $recordLine . ': lastmod "' . $lastmod . '" — нужен формат YYYY-MM-DD');
-    } elseif ($parsed > $today) {
+    } elseif ($parsed > $lastmodLimit) {
         add_error('строка ' . $recordLine . ': lastmod "' . $lastmod . '" в будущем');
     }
 
