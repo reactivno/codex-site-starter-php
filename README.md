@@ -69,13 +69,32 @@ Apache отдаёт готовый HTML из `cache/` напрямую, PHP пр
 `templates/` или `partials/` кэш нужно перерисовать:
 
 ```bash
-php scripts/warmup.php            # все страницы
-php scripts/warmup.php --from=0 --limit=500   # батчами
+php scripts/warmup.php                       # все страницы
+php scripts/warmup.php --from=0 --limit=500  # батчами
+php scripts/warmup.php --prune               # убрать из кэша удалённые страницы
 ```
 
-На проде это делает `deploy.yml` сразу после заливки по FTP: вызывает
-`/scripts/warmup.php?token=...&from=...&limit=500`, пока не кончатся страницы. Переменная
-`WARMUP_TOKEN` должна быть задана и в GitHub Secrets, и в окружении сайта на хостинге.
+`--prune` удаляет из `cache/` файлы, которых нет в `data/index.json` (и зависшие `tmp-*`): без него
+страница, убранная из CSV, продолжает отдаваться с кодом `200`, потому что Apache берёт файл из кэша.
+Если индекс не читается или пуст, `prune` ничего не трогает и падает с кодом 1.
+
+На проде это делает `deploy.yml` сразу после заливки по FTP: сначала прогрев батчами по 500 (сколько
+страниц — берётся из `data/index.json`), потом один вызов `prune`. Токен передаётся заголовком
+`X-Warmup-Token` — в query он попал бы в логи сервера. Шаг падает, если в ответе есть `ошибок: N`
+при `N > 0`, и если секрет не задан.
+
+Проверки руками:
+
+```bash
+# прогреваем одну страницу батчем и смотрим ответ
+curl -s -H "X-Warmup-Token: $WARMUP_TOKEN" \
+  "https://example.ru/scripts/warmup.php?from=0&limit=500"
+# чистим кэш от удалённых страниц
+curl -s -H "X-Warmup-Token: $WARMUP_TOKEN" \
+  "https://example.ru/scripts/warmup.php?prune=1"
+```
+
+Без заголовка или с чужим токеном скрипт отвечает `403`.
 
 ## Адрес сайта и домен
 
@@ -85,9 +104,13 @@ php scripts/warmup.php --from=0 --limit=500   # батчами
 
 Подключили домен — задайте `SITE_URL` в переменных окружения сайта и в переменной репозитория
 `SITE_URL` (Settings → Variables → Actions), затем пересоберите данные и прогрейте кэш.
-Редиректы `http → https`, `www → без www` в `.htaccess` не лежат намеренно: домена у стартера нет,
-а правило по `%{HTTP_HOST}` — это открытый редирект на подставленный Host. Когда домен появится,
-добавьте в блок `mod_rewrite` (подставив свой домен):
+**Для деплоя `SITE_URL` обязателен:** `deploy.yml` падает с сообщением, если переменная пуста или
+без `https://`, — иначе на прод уехали бы `canonical` и `sitemap` с `localhost`.
+
+В `.htaccess` уже есть редирект `http → https` (кроме `localhost`, с учётом `X-Forwarded-Proto`).
+Редиректа `www → без www` там нет намеренно: домен не задан, а правило по `%{HTTP_HOST}` — это
+открытый редирект на подставленный Host. Когда домен появится, добавьте в блок `mod_rewrite`
+(подставив свой домен):
 
 ```apache
 RewriteCond %{HTTP_HOST} ^(?:www\.)?ВАШ-ДОМЕН.ru$ [NC]
@@ -97,6 +120,23 @@ RewriteCond %{HTTP_HOST} ^www\.ВАШ-ДОМЕН\.ru$ [NC]
 RewriteRule ^ https://ВАШ-ДОМЕН.ru%{REQUEST_URI} [R=301,L]
 ```
 
+## Проверка `.htaccess` на Apache
+
+Встроенный сервер PHP (`php -S`) не читает `.htaccess`, поэтому кэш и редиректы проверяются только на
+Apache (`mod_rewrite`, `AllowOverride All`, `mod_php`). Каждый адрес запрашивается дважды: первый запрос
+рендерит страницу и создаёт `cache/`, второй должен отдаваться файлом кэша.
+
+```bash
+curl -sI https://example.ru/uslugi                     # 200, кэша ещё нет
+curl -sI https://example.ru/uslugi | grep -iE 'etag|last-modified'   # 200 + ETag и Last-Modified
+curl -sI https://example.ru/cache/uslugi.html          # 403
+curl -sI https://example.ru/.ftp-deploy-sync-state.json  # 403 (dotfiles)
+curl -sI https://example.ru/uslugi/                    # 301 на /uslugi
+```
+
+Если второй ответ отдаёт `403` — значит после внутреннего редиректа переменная окружения стала
+`REDIRECT_CACHE_HIT`, и условие запрета надо смотреть по ней, а не по `CACHE_HIT`.
+
 ## Секреты GitHub (Settings → Secrets)
 
 | Секрет | Значение |
@@ -104,7 +144,7 @@ RewriteRule ^ https://ВАШ-ДОМЕН.ru%{REQUEST_URI} [R=301,L]
 | `FTP_SERVER` | хост FTP, например `ftp.example.com` (только для прода) |
 | `FTP_USERNAME` | логин FTP (только для прода) |
 | `FTP_PASSWORD` | пароль FTP (только для прода) |
-| `WARMUP_TOKEN` | произвольная случайная строка; тот же значение — в окружении сайта |
+| `WARMUP_TOKEN` | произвольная случайная строка; то же значение — в окружении сайта. Нужен для прогрева, без него шаг деплоя падает |
 
 `WARMUP_TOKEN` генерируется один раз: `openssl rand -hex 32`. Ни с чем не связан, нужен только чтобы
 посторонний не мог перерисовать кэш. Подставьте то же значение в переменные окружения сайта.
