@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../lib/config.php';
 require_once __DIR__ . '/../lib/render.php';
 require_once __DIR__ . '/../lib/seo.php';
+require_once __DIR__ . '/../lib/csv.php';
 
 // Сборка статики для стенда: GitHub Pages не исполняет PHP, поэтому страницы
 // рендерятся здесь и кладутся в _site как готовые файлы.
@@ -114,30 +115,30 @@ function out_file(string $outDir, string $path): string
     return $path === HOME_PATH ? $outDir . '/index.html' : $outDir . '/' . $path . '/index.html';
 }
 
-/** Строки CSV как карта "path => строка": так видно и добавленные, и изменённые записи. */
-function csv_rows(string $csv): array
+/**
+ * CSV как карта "path => нормализованная строка": так видно и добавленные,
+ * и изменённые записи. Общий csv_parse: Excel с ";" и многострочные значения
+ * больше не прячут изменения от диффа (построчный str_getcsv с "," их пропускал).
+ */
+function csv_map(string $csv): array
 {
-    $rows = [];
-    $lines = preg_split('/\r\n|\n/', $csv) ?: [];
-
-    foreach ($lines as $line) {
-        $trimmed = trim($line);
-        if ($trimmed === '' || str_starts_with($trimmed, 'path')) {
+    $parsed = csv_parse($csv);
+    $map = [];
+    foreach ($parsed['rows'] as $row) {
+        $path = trim((string) ($row['values']['path'] ?? ''));
+        if ($path === '') {
             continue;
         }
-        $first = str_getcsv($trimmed, ',', '"', '');
-        $path = trim((string) ($first[0] ?? ''));
-        if ($path !== '') {
-            $rows[$path] = $trimmed;
-        }
+        $map[$path] = csv_normalize($row['values']);
     }
 
-    return $rows;
+    return $map;
 }
 
 /**
  * Страницы, изменённые в PR: сравниваем pages.csv из базовой ветки с текущим.
- * Если база недоступна — не падаем, а собираем только образцы по типам.
+ * Если база недоступна или не читается — не падаем, а собираем только образцы
+ * по типам (предупреждение печатает вызывающий код).
  */
 function changed_paths(string $ref): ?array
 {
@@ -152,12 +153,16 @@ function changed_paths(string $ref): ?array
         return null;
     }
 
-    $before = csv_rows(implode("\n", $lines));
-    $after = csv_rows($current);
+    try {
+        $before = csv_map(implode("\n", $lines));
+        $after = csv_map($current);
+    } catch (RuntimeException) {
+        return null;
+    }
 
     $changed = [];
-    foreach ($after as $path => $line) {
-        if (!isset($before[$path]) || $before[$path] !== $line) {
+    foreach ($after as $path => $normalized) {
+        if (!isset($before[$path]) || $before[$path] !== $normalized) {
             $changed[] = $path;
         }
     }

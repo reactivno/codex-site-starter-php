@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../lib/config.php';
 require_once __DIR__ . '/../lib/render.php';
 require_once __DIR__ . '/../lib/seo.php';
+require_once __DIR__ . '/../lib/csv.php';
 
 // Сборка данных: data/pages.csv -> data/pages/<path>.json + data/index.json.
 // Битый CSV должен ломать сборку с адресом ошибки (файл, строка, поле),
@@ -68,27 +69,6 @@ function add_error(string $message): void
 function add_warning(string $message): void
 {
     fwrite(STDERR, 'предупреждение: pages.csv: ' . $message . "\n");
-}
-
-/** Разделитель определяем по шапке: Excel в русской локали пишет ";" и BOM. */
-function detect_delimiter(string $raw): string
-{
-    $firstLine = strstr($raw, "\n", true);
-    if ($firstLine === false) {
-        $firstLine = $raw;
-    }
-
-    $best = ',';
-    $bestCount = 0;
-    foreach ([',', ';', "\t"] as $candidate) {
-        $count = substr_count($firstLine, $candidate);
-        if ($count > $bestCount) {
-            $best = $candidate;
-            $bestCount = $count;
-        }
-    }
-
-    return $best;
 }
 
 /** Удаление сгенерированного: удалённая из CSV страница не должна отдаваться вечно. */
@@ -267,39 +247,16 @@ if ($raw === false) {
     fwrite(STDERR, 'pages.csv: файл не найден: ' . CSV_FILE . "\n");
     exit(1);
 }
-$raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw) ?? $raw;
 
-$delimiter = detect_delimiter($raw);
-
-$handle = fopen('php://temp', 'r+');
-if ($handle === false) {
-    fwrite(STDERR, "не удалось открыть временный поток\n");
+try {
+    $parsed = csv_parse($raw);
+} catch (RuntimeException $e) {
+    fwrite(STDERR, 'pages.csv: ' . $e->getMessage() . "\n");
     exit(1);
 }
-fwrite($handle, $raw);
-rewind($handle);
-
-// Номер физической строки: считаем переводы строк в прочитанных байтах,
-// поэтому значения в кавычках с переносами внутри не сбивают нумерацию.
-$lineNo = 1;
-$offset = 0;
-$advance = static function () use ($handle, $raw, &$lineNo, &$offset): void {
-    $position = ftell($handle);
-    if ($position !== false && $position > $offset) {
-        $lineNo += substr_count($raw, "\n", $offset, $position - $offset);
-        $offset = $position;
-    }
-};
-
-$headerRow = fgetcsv($handle, 0, $delimiter, '"', '');
-if ($headerRow === false) {
-    fwrite(STDERR, "pages.csv: файл пуст\n");
-    exit(1);
-}
-$advance();
 
 $columns = [];
-$header = array_map(static fn ($name): string => trim((string) $name), $headerRow);
+$header = $parsed['header'];
 
 foreach ($header as $position => $name) {
     if (preg_match('/^[a-z][a-z0-9_]*$/', $name) !== 1) {
@@ -336,17 +293,12 @@ $titleFirst = [];
 $h1First = [];
 $descriptionFirst = [];
 
-while (($row = fgetcsv($handle, 0, $delimiter, '"', '')) !== false) {
-    $recordLine = $lineNo;
-    $advance();
-
-    if ($row === [null]) {
-        continue; // пустая строка между записями
-    }
+foreach ($parsed['rows'] as $row) {
+    $recordLine = (int) $row['line'];
 
     $values = [];
     foreach ($columns as $name => $position) {
-        $values[$name] = trim((string) ($row[$position] ?? ''));
+        $values[$name] = trim((string) ($row['values'][$name] ?? ''));
     }
 
     // path
