@@ -19,10 +19,13 @@ const DEFAULT_BATCH = 500;
 $isCli = PHP_SAPI === 'cli';
 $from = 0;
 $limit = DEFAULT_BATCH;
+$prune = false;
 
 if ($isCli) {
     foreach (array_slice($argv ?? [], 1) as $argument) {
-        if (preg_match('/^--(from|limit)=(\d+)$/', (string) $argument, $match) === 1) {
+        if ((string) $argument === '--prune') {
+            $prune = true;
+        } elseif (preg_match('/^--(from|limit)=(\d+)$/', (string) $argument, $match) === 1) {
             ${$match[1]} = (int) $match[2];
         }
     }
@@ -42,6 +45,7 @@ if ($isCli) {
 
     $from = max(0, (int) ($_GET['from'] ?? 0));
     $limit = (int) ($_GET['limit'] ?? DEFAULT_BATCH);
+    $prune = (($_GET['prune'] ?? '') === '1');
 }
 
 $indexRaw = @file_get_contents(INDEX_FILE);
@@ -60,6 +64,78 @@ foreach ($index['pages'] as $entry) {
     }
 }
 sort($paths);
+
+if ($prune) {
+    // Режим prune: из cache/ удаляются все *.html, которых нет в data/index.json,
+    // плюс зависшие tmp-* (остатки прерванной атомарной записи) и пустые подкаталоги.
+    // Если индекс пуст (count=0) — ничего не удаляем: иначе одна битая/пустая
+    // сборка снесла бы весь кэш. (Нечитаемый индекс уже выше => exit(1).)
+    $indexCount = (int) ($index['count'] ?? 0);
+    if ($indexCount === 0 || empty($paths)) {
+        if (!$isCli) {
+            http_response_code(500);
+        }
+        echo 'prune: индекс пуст (count=0) — кэш не трогаем' . "\n";
+        exit(1);
+    }
+
+    // Ожидаемые файлы кэша: cache/<path>.html для каждой страницы индекса.
+    // Собираем через cache_file(), чтобы ключ совпадал с путём записи 1-в-1.
+    $expected = [];
+    foreach ($paths as $p) {
+        $expected[cache_file($p)] = true;
+    }
+
+    $removed = 0;
+    $remaining = 0;
+    $subDirs = [];
+    $stack = [CACHE_DIR];
+    while ($stack) {
+        $dir = array_pop($stack);
+        $entries = @scandir($dir);
+        if ($entries === false) {
+            continue;
+        }
+        foreach ($entries as $name) {
+            if ($name === '.' || $name === '..') {
+                continue;
+            }
+            // '/' (а не DIRECTORY_SEPARATOR): чтобы $full совпадал с key из cache_file().
+            $full = $dir . '/' . $name;
+            if (is_dir($full)) {
+                $stack[] = $full;
+                if ($full !== CACHE_DIR) {
+                    $subDirs[] = $full;
+                }
+                continue;
+            }
+            // tmp-* — остатки атомарной записи, удаляем всегда.
+            if (str_starts_with($name, 'tmp-')) {
+                if (@unlink($full)) {
+                    $removed++;
+                }
+                continue;
+            }
+            // *.html вне индекса — страница уже удалена из CSV.
+            if (str_ends_with($name, '.html') && !isset($expected[$full])) {
+                if (@unlink($full)) {
+                    $removed++;
+                }
+                continue;
+            }
+            $remaining++;
+        }
+    }
+
+    // Пустые подкаталоги: снизу вверх, чтобы очистился и родительский каталог.
+    usort($subDirs, static fn (string $a, string $b): int => substr_count($b, '/') - substr_count($a, '/'));
+    foreach ($subDirs as $d) {
+        @rmdir($d);
+    }
+
+    echo 'удалено: ' . $removed . ', осталось: ' . $remaining . "\n";
+    exit(0);
+}
 
 $batch = array_slice($paths, max(0, $from), $limit > 0 ? $limit : null);
 

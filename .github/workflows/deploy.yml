@@ -85,3 +85,14 @@ jobs:
               *"готово: 0,"*) break ;;
             esac
           done
+
+      - name: Очистка кэша (prune)
+        # Без prune страница, убранная из CSV, живёт в cache/ вечно и отдаётся
+        # Apache напрямую (200 вместо 404). Вызываем один раз после прогрева.
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}
+        run: |
+          answer=$(curl -fsS \
+            "${SITE_URL}/scripts/warmup.php?token=${WARMUP_TOKEN}&prune=1")
+          echo "$answer"
