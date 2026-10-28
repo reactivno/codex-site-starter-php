@@ -12,6 +12,11 @@ require_once __DIR__ . '/lib/render.php';
 // что встроенный сервер не читает .htaccess.
 
 const NOT_FOUND_TYPE = '404';
+
+// Единственное исключение из запрета scripts/: деплой дёргает прогрев по HTTP,
+// потому что SSH и cron на хостинге нет. Доступ закрыт токеном внутри файла.
+const WARMUP_ENTRY = 'scripts/warmup.php';
+
 const NOT_FOUND_PAGE = [
     'path' => '',
     'type' => NOT_FOUND_TYPE,

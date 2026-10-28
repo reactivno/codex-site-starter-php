@@ -6,6 +6,11 @@ on:
 permissions:
   contents: read
 
+# два быстрых мержа подряд не должны синхронизировать FTP параллельно
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     # Прод — главная ветка репозитория,
@@ -24,6 +29,13 @@ jobs:
           find . -name '*.php' -not -path './.git/*' -print0 \
             | xargs -0 -r -n1 php -l
 
+      - name: Данные страниц
+        # canonical и sitemap собираются с доменом сайта: он в переменной
+        # репозитория, а не в коде. Пустая переменная даёт адреса localhost.
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: php scripts/split-data.php --site-url="$SITE_URL"
+
       - name: Загрузка на хостинг
         uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
@@ -38,3 +50,26 @@ jobs:
             **/.github/**
             **/*.md
             **/.env*
+            cache/**
+            _site/**
+            data/pages.csv
+            scripts/split-data.php
+            scripts/build.php
+            scripts/check.php
+
+      - name: Прогрев кэша
+        # Apache отдаёт готовый HTML напрямую: без прогрева правка шаблона
+        # не долетит до посетителя, старые файлы останутся в cache/.
+        if: vars.SITE_URL != ''
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}
+        run: |
+          for from in $(seq 0 500 6000); do
+            answer=$(curl -fsS \
+              "${SITE_URL}/scripts/warmup.php?token=${WARMUP_TOKEN}&from=${from}&limit=500")
+            echo "$from: $answer"
+            case "$answer" in
+              *"готово: 0,"*) break ;;
+            esac
+          done

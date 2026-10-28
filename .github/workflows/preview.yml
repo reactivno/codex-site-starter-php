@@ -18,7 +18,10 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
+      # полная история: сборка сравнивает pages.csv базовой ветки с текущим
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -29,17 +32,50 @@ jobs:
           find . -name '*.php' -not -path './.git/*' -print0 \
             | xargs -0 -r -n1 php -l
 
-      - name: Сборка статики
-        # Pages не запускает PHP: php/ на стенд не кладём.
-        # data/, lib/, scripts/, templates/ — код и контент сайта, им на стенд нельзя:
-        # Pages публичный, а pages.csv — это весь сайт.
+      - name: Адрес стенда
+        # Pages публикует папку PR в /<репозиторий>/pr-<номер>.
+        # Ссылки в HTML должны быть абсолютными с этим префиксом,
+        # иначе CSS и форма уходят в 404.
+        env:
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
-          rsync -a \
-            --exclude '.git' --exclude '.github' --exclude '.gitignore' \
-            --exclude '.env*' --exclude '*.md' --exclude 'php' \
-            --exclude 'data' --exclude 'lib' --exclude 'scripts' \
-            --exclude 'templates' --exclude 'partials' --exclude 'cache' \
-            ./ _site/
+          OWNER="${OWNER,,}"
+          REPO="${REPO,,}"
+          SITE="https://${OWNER}.github.io"
+          if [ "$REPO" = "${OWNER}.github.io" ]; then
+            PREFIX=""
+          else
+            PREFIX="/${REPO}"
+          fi
+          echo "SITE_URL=${SITE}" >> "$GITHUB_ENV"
+          echo "SITE_BASE=${PREFIX}/pr-${PR}" >> "$GITHUB_ENV"
+          echo "STAND_URL=${SITE}${PREFIX}/pr-${PR}/" >> "$GITHUB_ENV"
+
+      - name: Данные страниц
+        run: |
+          php scripts/split-data.php \
+            --site-url="$SITE_URL" \
+            --base="$SITE_BASE"
+
+      - name: Сборка статики
+        # Pages не запускает PHP: на стенд едут только готовые html и статика.
+        # --sample: образцы каждого типа видны, даже если изменений нет.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF" || true
+          php scripts/build.php \
+            --out=_site \
+            --site-url="$SITE_URL" \
+            --base="$SITE_BASE" \
+            --sample=2 \
+            --changed-from="origin/${BASE_REF}"
+
+      - name: Проверка метаданных
+        # Падает, если у страницы нет title, h1 или абсолютного canonical.
+        run: php scripts/check.php --dir=_site
 
       - name: Публикация стенда
         uses: peaceiris/actions-gh-pages@v4
@@ -54,14 +90,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-          OWNER: ${{ github.repository_owner }}
-          REPO: ${{ github.event.repository.name }}
         run: |
-          OWNER="${OWNER,,}"
-          REPO="${REPO,,}"
-          if [ "$REPO" = "${OWNER}.github.io" ]; then
-            BASE="https://${OWNER}.github.io"
-          else
-            BASE="https://${OWNER}.github.io/${REPO}"
-          fi
-          gh pr comment "$PR" --body "Стенд: ${BASE}/pr-${PR}/"
+          gh pr comment "$PR" --body "Стенд: ${STAND_URL}"
