@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}}</title>
+    <meta name="description" content="{{description}}" />
+    {{{_robots}}}
+    <link rel="canonical" href="{{_canonical}}" />
+    <link rel="stylesheet" href="{{_base}}/css/style.css" />
+  </head>
+  <body>
+    {{ include header}}
+    <main class="page">
+      {{ include breadcrumbs}}
+      <h1>{{h1}}</h1>
+      {{{body}}}
+    </main>
+    {{ include footer}}
+  </body>
+</html>

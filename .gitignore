@@ -7,3 +7,9 @@ node_modules/
 # генерируется рендером и сборкой стенда
 cache/
 _site/
+
+# генерируется из data/pages.csv
+# сам pages.csv — источник правды, он в git
+/data/pages/
+/data/index.json
+/sitemap.xml
