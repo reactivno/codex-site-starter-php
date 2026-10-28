@@ -29,6 +29,19 @@ jobs:
           find . -name '*.php' -not -path './.git/*' -print0 \
             | xargs -0 -r -n1 php -l
 
+      - name: Проверка SITE_URL
+        # Пустой SITE_URL отправил бы на прод canonical и sitemap с localhost.
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          case "$SITE_URL" in
+            https://?*) ;;
+            *)
+              echo "переменная репозитория SITE_URL пуста или без https://"
+              exit 1
+              ;;
+          esac
+
       - name: Данные страниц
         # canonical и sitemap собираются с доменом сайта: он в переменной
         # репозитория, а не в коде. Пустая переменная даёт адреса localhost.
@@ -60,7 +73,6 @@ jobs:
       - name: Прогрев кэша
         # Apache отдаёт готовый HTML напрямую: без прогрева правка шаблона
         # не долетит до посетителя, старые файлы останутся в cache/.
-        if: vars.SITE_URL != ''
         env:
           SITE_URL: ${{ vars.SITE_URL }}
           WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}

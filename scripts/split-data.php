@@ -39,6 +39,17 @@ foreach (array_slice($argv ?? [], 1) as $argument) {
         $cliOptions[$match[1]] = $match[2];
     }
 }
+
+// --site-url передан (даже пустым): канонический адрес не должен упасть на localhost.
+// Разрешён только абсолютный https-адрес без пути и слэша на конце.
+if (array_key_exists('site-url', $cliOptions)) {
+    $value = trim((string) $cliOptions['site-url']);
+    if (preg_match('#^https://[a-z0-9.-]+$#i', $value) !== 1) {
+        fwrite(STDERR, "--site-url должен быть абсолютным https-адресом без пути и слэша: \"$value\"\n");
+        exit(1);
+    }
+}
+
 $siteUrl = site_url($cliOptions['site-url'] ?? null);
 $hasSiteUrl = trim((string) ($cliOptions['site-url'] ?? '')) !== '';
 $base = site_base($cliOptions['base'] ?? null);
