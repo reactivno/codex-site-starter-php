@@ -1,18 +1,21 @@
 const form = document.getElementById("lead-form");
 const status = document.getElementById("lead-status");
-const submit = form.querySelector('button[type="submit"]');
+// Шаблон подключает модуль на всех страницах, а форма есть не везде (категория,
+// 404, текстовая). Без необязательных обращений модуль упал бы с TypeError
+// и не выполнил ничего дальше.
+const submit = form?.querySelector('button[type="submit"]');
 
 // На стенде GitHub Pages нет PHP: отправку отключаем, иначе пользователь
 // получит ошибку сети вместо понятного сообщения.
 const isStand = location.hostname.endsWith("github.io");
 
-if (isStand) {
+if (isStand && submit) {
   submit.disabled = true;
   status.textContent = "Тестовый стенд: отправка формы отключена.";
 }
 
 // Проверка в браузере — только подсказка; сервер проверяет поля заново.
-form.addEventListener("submit", async (event) => {
+form?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   if (isStand) {

@@ -106,3 +106,43 @@ input[type="checkbox"] {
 .form__status--error {
   color: #b42318;
 }
+
+/* шапка, подвал и крошки: общая ширина с .page, чтобы колонка не ломалась */
+.site-header,
+.site-footer {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 20px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.site-header a,
+.site-footer a,
+.breadcrumbs a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.site-header a:hover,
+.site-footer a:hover,
+.breadcrumbs a:hover {
+  text-decoration: underline;
+}
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.site-footer__copy {
+  margin: 0;
+}
+
+.breadcrumbs {
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--muted);
+}

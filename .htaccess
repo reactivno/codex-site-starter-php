@@ -1,0 +1,25 @@
+# Только то, что не может проверить PHP: раздача готового кэша и редиректы.
+# Всё остальное (валидация пути, 404, 503) делает index.php — так сайт остаётся
+# рабочим, даже если mod_rewrite на хостинге окажется выключен.
+Options -Indexes -MultiViews
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # слэш на конце убираем до кэша
+  RewriteCond %{REQUEST_URI} !^/$
+  RewriteRule ^(.+)/$ /$1 [R=301,L]
+
+  # служебное закрыто; внутренний rewrite кэша не задеваем
+  RewriteCond %{ENV:CACHE_HIT} !=1
+  RewriteRule ^(?:cache|data|lib|scripts|templates|partials)/ - [F]
+
+  # быстрый путь: готовый HTML из кэша, без PHP
+  RewriteCond %{DOCUMENT_ROOT}/cache/$1.html -f
+  RewriteRule ^([a-z0-9-]+(?:/[a-z0-9-]+)*)$ cache/$1.html [L,E=CACHE_HIT:1]
+
+  # всё остальное — роутеру
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ index.php [L]
+</IfModule>

@@ -3,3 +3,7 @@
 Thumbs.db
 node_modules/
 .vibe-wise
+
+# генерируется рендером и сборкой стенда
+cache/
+_site/

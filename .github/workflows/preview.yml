@@ -31,10 +31,14 @@ jobs:
 
       - name: Сборка статики
         # Pages не запускает PHP: php/ на стенд не кладём.
+        # data/, lib/, scripts/, templates/ — код и контент сайта, им на стенд нельзя:
+        # Pages публичный, а pages.csv — это весь сайт.
         run: |
           rsync -a \
             --exclude '.git' --exclude '.github' --exclude '.gitignore' \
             --exclude '.env*' --exclude '*.md' --exclude 'php' \
+            --exclude 'data' --exclude 'lib' --exclude 'scripts' \
+            --exclude 'templates' --exclude 'partials' --exclude 'cache' \
             ./ _site/
 
       - name: Публикация стенда
