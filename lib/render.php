@@ -7,7 +7,7 @@ require_once __DIR__ . '/config.php';
 // Сырые вставки: без экранирования выводятся только эти поля.
 // Всё остальное проходит через htmlspecialchars — данные приходят из CSV,
 // который правит человек, и попадают в HTML. `_robots` — готовая meta-строка от кода.
-const RAW_FIELDS = ['body', '_breadcrumbs', '_related', '_jsonld', '_robots'];
+const RAW_FIELDS = ['body', '_breadcrumbs', '_related', '_jsonld', '_robots', '_children', '_neighbors'];
 
 const PARTIAL_MAX_DEPTH = 3;
 
@@ -47,6 +47,8 @@ function render_values(array $page): array
     $values['_breadcrumbs'] ??= '';
     $values['_related'] ??= '';
     $values['_jsonld'] ??= '';
+    $values['_children'] ??= '';
+    $values['_neighbors'] ??= '';
 
     return $values;
 }

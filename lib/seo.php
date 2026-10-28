@@ -11,6 +11,10 @@ require_once __DIR__ . '/config.php';
 const CRUMB_HOME_LABEL = 'Главная';
 const RELATED_TITLE = 'Смотрите также';
 const RELATED_LIMIT = 8;
+const CHILDREN_TITLE = 'Страницы раздела';
+
+// Пагинация списков не предусмотрена: больше лимита — нужна дискуссия с заказчиком.
+const CHILDREN_MAX = 300;
 
 // schema.org-тип страницы по нашему type. Неизвестный type — обычная WebPage.
 const SCHEMA_TYPES = [
@@ -74,6 +78,53 @@ function related_html(array $items, string $base = ''): string
 
     return '<aside class="related"><h2 class="related__title">' . RELATED_TITLE . '</h2>'
         . '<ul class="related__list">' . $links . '</ul></aside>';
+}
+
+/**
+ * Полный список детей категории: категория — единственное место, откуда
+ * можно сослаться на всех детей сразу, на «Смотрите также» для глубоких
+ * страниц рассчитывать нельзя.
+ */
+function children_html(array $children, string $base = ''): string
+{
+    if ($children === []) {
+        return '';
+    }
+
+    $links = '';
+    foreach ($children as $child) {
+        $links .= '<li class="children__item"><a href="'
+            . esc($base . page_uri((string) $child['path'])) . '">'
+            . esc((string) $child['title']) . '</a></li>';
+    }
+
+    return '<aside class="children"><h2 class="children__title">' . CHILDREN_TITLE . '</h2>'
+        . '<ul class="children__list">' . $links . '</ul></aside>';
+}
+
+/**
+ * «Предыдущая / следующая» среди детей одного родителя: цепочка связывает
+ * даже страницу, до которой никто не ссылался, кроме родителя.
+ */
+function neighbors_html(?array $prev, ?array $next, string $base = ''): string
+{
+    if ($prev === null && $next === null) {
+        return '';
+    }
+
+    $prevLink = $prev === null
+        ? '<span class="neighbors__link neighbors__link--empty">Предыдущая</span>'
+        : '<a class="neighbors__link" href="'
+            . esc($base . page_uri((string) $prev['path'])) . '">Предыдущая: '
+            . esc((string) $prev['title']) . '</a>';
+    $nextLink = $next === null
+        ? '<span class="neighbors__link neighbors__link--empty">Следующая</span>'
+        : '<a class="neighbors__link" href="'
+            . esc($base . page_uri((string) $next['path'])) . '">Следующая: '
+            . esc((string) $next['title']) . '</a>';
+
+    return '<nav class="neighbors" aria-label="Навигация по разделу">'
+        . $prevLink . $nextLink . '</nav>';
 }
 
 /**

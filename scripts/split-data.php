@@ -23,6 +23,7 @@ const MAX_ERRORS = 50;
 const COMPUTED_FIELDS = [
     '_canonical', '_base', '_form_action', '_robots',
     '_breadcrumbs', '_related', '_jsonld',
+    '_children', '_neighbors',
 ];
 
 if (PHP_SAPI !== 'cli') {
@@ -127,6 +128,13 @@ function write_file(string $file, string $content): void
     }
 }
 
+/** Остановка сборки с сообщением и кодом 1: дальше писать файлы бессмысленно. */
+function build_fail(string $message): void
+{
+    fwrite(STDERR, $message . "\n");
+    exit(1);
+}
+
 function json_encode_page(array $data): string
 {
     $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -180,6 +188,78 @@ function check_template(string $type, array $columns): array
     }
 
     return array_values(array_unique($found));
+}
+
+/**
+ * Готовые элементы «Смотрите также» для каждой страницы, один расчёт на всю сборку.
+ * Пустые массивы тоже кладём: страница без соседей — это не «нет ключа».
+ */
+function related_map(array $byPath, array $childrenOf): array
+{
+    $map = [];
+    foreach (array_keys($byPath) as $path) {
+        $map[$path] = related_for($path, $byPath, $childrenOf);
+    }
+
+    return $map;
+}
+
+/**
+ * Входящая ссылка на страницу приходит откуда: родитель-категория (ссылается
+ * на всех детей), соседи prev/next, блок «Смотрите также», крошки (предки).
+ * Главная исключена: у неё по определению нет входящих, и не нужно.
+ * Сирота без единой входящей не проиндексируется — требование ТЗ §5.4.5.
+ */
+function orphan_paths(array $byPath, array $childrenOf, array $relatedMap, array $ancestorsOf): array
+{
+    $orphans = [];
+
+    foreach ($byPath as $path => $data) {
+        if ($path === HOME_PATH) {
+            continue;
+        }
+
+        $segments = explode('/', $path);
+        $parent = count($segments) > 1 ? implode('/', array_slice($segments, 0, -1)) : '';
+
+        // От родителя-категории: категория выводит полный список детей.
+        $hasInbound = isset($childrenOf[$parent]) && (string) ($byPath[$parent]['type'] ?? '') === 'category';
+
+        // От соседей: хотя бы один из prev/next ссылается на эту страницу.
+        if (!$hasInbound) {
+            $siblings = $childrenOf[$parent] ?? [];
+            $position = array_search($path, $siblings, true);
+            if ($position !== false) {
+                $hasInbound = $position > 0 || $position < count($siblings) - 1;
+            }
+        }
+
+        // От «Смотрите также»: эта страница попала в related чужой страницы.
+        if (!$hasInbound) {
+            foreach ($relatedMap[$path] ?? [] as $item) {
+                if ($item['path'] === $path) {
+                    $hasInbound = true;
+                    break;
+                }
+            }
+        }
+
+        // От крошек: предок-категория ссылается на неё как на раздел в крошках.
+        if (!$hasInbound) {
+            foreach ($ancestorsOf[$path] ?? [] as $ancestor) {
+                if ((string) ($byPath[(string) $ancestor['path']]['type'] ?? '') === 'category') {
+                    $hasInbound = true;
+                    break;
+                }
+            }
+        }
+
+        if (!$hasInbound) {
+            $orphans[] = $path;
+        }
+    }
+
+    return $orphans;
 }
 
 $raw = @file_get_contents(CSV_FILE);
@@ -466,15 +546,60 @@ foreach (array_keys($byPath) as $path) {
     $parent = str_contains($path, '/') ? substr($path, 0, (int) strrpos($path, '/')) : '';
     $childrenOf[$parent][] = $path;
 }
+// Дети в порядке path: «Предыдущая / Следующая» и список раздела строятся на этом порядке.
+foreach ($childrenOf as &$siblingList) {
+    sort($siblingList, SORT_STRING);
+}
+unset($siblingList);
+
+$relatedMap = related_map($byPath, $childrenOf);
+$ancestorsMap = [];
 
 $indexEntries = [];
 foreach ($pages as $page) {
     $data = $page['data'];
 
     $ancestors = ancestors_of($data['path'], $byPath);
+    $ancestorsMap[$data['path']] = $ancestors;
     $data['_canonical'] = page_url($data['path'], $siteUrl);
     $data['_breadcrumbs'] = breadcrumbs_html($ancestors, (string) $data['title'], $base);
-    $data['_related'] = related_html(related_for($data['path'], $byPath, $childrenOf), $base);
+    $data['_related'] = related_html($relatedMap[$data['path']], $base);
+
+    // Раздел: полный список детей. Больше CHILDREN_MAX — пауза, пагинацию не придумываем.
+    if ((string) $data['type'] === 'category') {
+        $childPaths = $childrenOf[$data['path']] ?? [];
+        if (count($childPaths) > CHILDREN_MAX) {
+            build_fail(sprintf(
+                'раздел %s: детей %d, пагинации нет — нужно решение заказчика',
+                $data['path'],
+                count($childPaths)
+            ));
+        }
+        $data['_children'] = children_html(array_map(
+            static fn (string $child): array => ['path' => $child, 'title' => (string) $byPath[$child]['title']],
+            $childPaths
+        ), $base);
+    } else {
+        $data['_children'] = '';
+    }
+
+    // Не-разделы: «Предыдущая / Следующая» среди детей того же родителя.
+    if ((string) $data['type'] === 'category') {
+        $data['_neighbors'] = '';
+    } else {
+        $siblings = $childrenOf[
+            str_contains($data['path'], '/') ? substr($data['path'], 0, (int) strrpos($data['path'], '/')) : ''
+        ] ?? [];
+        $position = array_search($data['path'], $siblings, true);
+        $prev = $position !== false && $position > 0
+            ? ['path' => $siblings[$position - 1], 'title' => (string) $byPath[$siblings[$position - 1]]['title']]
+            : null;
+        $next = $position !== false && $position < count($siblings) - 1
+            ? ['path' => $siblings[$position + 1], 'title' => (string) $byPath[$siblings[$position + 1]]['title']]
+            : null;
+        $data['_neighbors'] = neighbors_html($prev, $next, $base);
+    }
+
     $data['_jsonld'] = jsonld_html($data, $ancestors, $siteUrl);
 
     write_file(PAGES_DIR . '/' . $data['path'] . '.json', json_encode_page($data));
@@ -501,5 +626,20 @@ write_file(
 
 write_file(SITEMAP_FILE, sitemap_xml(array_map(static fn (array $page): array => $page['data'], $pages), $siteUrl));
 write_file(ROBOTS_FILE, robots_txt($siteUrl, $hasSiteUrl));
+
+// Финальная проверка SEO: страница без входящих ссылок не проиндексируется.
+// Главная исключение (у неё по определению нет входящих).
+$orphans = orphan_paths($byPath, $childrenOf, $relatedMap, $ancestorsMap);
+if ($orphans !== []) {
+    $shown = array_slice($orphans, 0, 20);
+    fwrite(STDERR, 'страниц без входящих ссылок (сирот): ' . count($orphans) . "\n");
+    foreach ($shown as $orphan) {
+        fwrite(STDERR, '  ' . $orphan . "\n");
+    }
+    if (count($orphans) > 20) {
+        fwrite(STDERR, '  …и ещё ' . (count($orphans) - 20) . "\n");
+    }
+    exit(1);
+}
 
 echo 'готово: ' . count($indexEntries) . " страниц\n";
