@@ -8,13 +8,14 @@
     {{{_robots}}}
     <link rel="canonical" href="{{_canonical}}" />
     <link rel="stylesheet" href="{{_base}}/css/style.css" />
+    {{{_jsonld}}}
   </head>
   <body>
     {{ include header}}
     <main class="page">
       {{ include breadcrumbs}}
       <h1>{{h1}}</h1>
-      {{{body}}} {{ include form}}
+      {{{body}}} {{{_related}}} {{ include form}}
     </main>
     {{ include footer}}
   </body>

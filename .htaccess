@@ -7,6 +7,10 @@ DirectoryIndex index.php
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  # дубли главной: /index.html и /home ведут на /
+  RewriteRule ^index\.html$ / [R=301,L]
+  RewriteRule ^home$ / [R=301,L]
+
   # слэш на конце убираем до кэша
   RewriteCond %{REQUEST_URI} !^/$
   RewriteRule ^(.+)/$ /$1 [R=301,L]

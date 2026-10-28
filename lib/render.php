@@ -37,7 +37,8 @@ function render_values(array $page): array
     $path = (string) ($page['path'] ?? HOME_PATH);
 
     $values = $page;
-    $values['_canonical'] = page_url($path);
+    // _canonical приходит из сборки; запасной расчёт — для страниц без сборки.
+    $values['_canonical'] ??= page_url($path);
     $values['_base'] = site_base();
     $values['_form_action'] = $values['_base'] . '/php/send.php';
     $values['_robots'] = (int) ($page['noindex'] ?? 0) === 1

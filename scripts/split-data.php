@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../lib/config.php';
 require_once __DIR__ . '/../lib/render.php';
+require_once __DIR__ . '/../lib/seo.php';
 
 // Сборка данных: data/pages.csv -> data/pages/<path>.json + data/index.json.
 // Битый CSV должен ломать сборку с адресом ошибки (файл, строка, поле),
@@ -12,6 +13,8 @@ require_once __DIR__ . '/../lib/render.php';
 const CSV_FILE = ROOT_DIR . '/data/pages.csv';
 const PAGES_DIR = ROOT_DIR . '/data/pages';
 const INDEX_FILE = ROOT_DIR . '/data/index.json';
+const SITEMAP_FILE = ROOT_DIR . '/sitemap.xml';
+const ROBOTS_FILE = ROOT_DIR . '/robots.txt';
 
 const REQUIRED_COLUMNS = ['path', 'type', 'title', 'description', 'h1', 'lastmod'];
 const MAX_ERRORS = 50;
@@ -27,6 +30,18 @@ if (PHP_SAPI !== 'cli') {
     echo "Только из командной строки\n";
     exit;
 }
+
+// --site-url=https://домен и --base=/репозиторий/pr-N передаются сборкой стенда;
+// без них canonical и sitemap указывают на localhost.
+$cliOptions = [];
+foreach (array_slice($argv ?? [], 1) as $argument) {
+    if (preg_match('/^--([a-z-]+)=(.*)$/', (string) $argument, $match) === 1) {
+        $cliOptions[$match[1]] = $match[2];
+    }
+}
+$siteUrl = site_url($cliOptions['site-url'] ?? null);
+$hasSiteUrl = trim((string) ($cliOptions['site-url'] ?? '')) !== '';
+$base = site_base($cliOptions['base'] ?? null);
 
 $errors = [];
 
@@ -387,11 +402,68 @@ if ($errors !== []) {
     exit(1);
 }
 
+/** Цепочка предков: главная -> раздел -> ... без самой страницы. */
+function ancestors_of(string $path, array $byPath): array
+{
+    $ancestors = [];
+    $segments = explode('/', $path);
+
+    for ($depth = 1; $depth < count($segments); $depth++) {
+        $prefix = implode('/', array_slice($segments, 0, $depth));
+        if (isset($byPath[$prefix])) {
+            $ancestors[] = ['path' => $prefix, 'title' => (string) $byPath[$prefix]['title']];
+        }
+    }
+
+    return $ancestors;
+}
+
+/** Сначала дочерние страницы, затем соседи: так у каждой есть входящие ссылки. */
+function related_for(string $path, array $byPath, array $childrenOf): array
+{
+    $items = [];
+
+    foreach ($childrenOf[$path] ?? [] as $child) {
+        $items[$child] = ['path' => $child, 'title' => (string) $byPath[$child]['title']];
+    }
+
+    $parent = str_contains($path, '/') ? substr($path, 0, (int) strrpos($path, '/')) : '';
+    foreach ($childrenOf[$parent] ?? [] as $sibling) {
+        if ($sibling === $path || isset($items[$sibling])) {
+            continue;
+        }
+        $items[$sibling] = ['path' => $sibling, 'title' => (string) $byPath[$sibling]['title']];
+    }
+
+    ksort($items);
+
+    return array_slice($items, 0, RELATED_LIMIT);
+}
+
 clear_dir(PAGES_DIR);
+
+// Карта путей нужна и для крошек, и для блока «рядом»: считаем один раз.
+$byPath = [];
+foreach ($pages as $page) {
+    $byPath[$page['data']['path']] = $page['data'];
+}
+
+$childrenOf = [];
+foreach (array_keys($byPath) as $path) {
+    $parent = str_contains($path, '/') ? substr($path, 0, (int) strrpos($path, '/')) : '';
+    $childrenOf[$parent][] = $path;
+}
 
 $indexEntries = [];
 foreach ($pages as $page) {
     $data = $page['data'];
+
+    $ancestors = ancestors_of($data['path'], $byPath);
+    $data['_canonical'] = page_url($data['path'], $siteUrl);
+    $data['_breadcrumbs'] = breadcrumbs_html($ancestors, (string) $data['title'], $base);
+    $data['_related'] = related_html(related_for($data['path'], $byPath, $childrenOf), $base);
+    $data['_jsonld'] = jsonld_html($data, $ancestors, $siteUrl);
+
     write_file(PAGES_DIR . '/' . $data['path'] . '.json', json_encode_page($data));
 
     $indexEntries[] = [
@@ -413,5 +485,8 @@ write_file(
         'pages' => $indexEntries,
     ])
 );
+
+write_file(SITEMAP_FILE, sitemap_xml(array_map(static fn (array $page): array => $page['data'], $pages), $siteUrl));
+write_file(ROBOTS_FILE, robots_txt($siteUrl, $hasSiteUrl));
 
 echo 'готово: ' . count($indexEntries) . " страниц\n";
