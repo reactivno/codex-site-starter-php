@@ -31,11 +31,12 @@ jobs:
 
       - name: Проверка SITE_URL
         # Пустой SITE_URL отправил бы на прод canonical и sitemap с localhost.
-        # Схема может быть любой: http — пока у хостинга нет TLS.
-        # Значение печатаем и нормализуем: домен не секрет, а так видно,
-        # что в нём на самом деле (пробел, кавычки, заглавные).
+        # Домен не секрет, но берём и из Variables, и из Secrets: люди кладут
+        # его то туда, то туда, и падать из-за этого незачем. Схема любая.
+        # Значение печатаем и нормализуем: видно, что в нём на самом деле.
         env:
-          RAW_SITE_URL: ${{ vars.SITE_URL }}
+          RAW_SITE_URL: ${{ vars.SITE_URL || secrets.SITE_URL }}
+          VISIBLE_VARS: ${{ toJSON(vars) }}
         run: |
           value="$RAW_SITE_URL"
           value="${value//[[:space:]]/}"
@@ -47,9 +48,10 @@ jobs:
               echo "SITE_URL=$value" >> "$GITHUB_ENV"
               ;;
             *)
-              echo "переменная репозитория SITE_URL пуста или без http(s)://"
-              echo "задать: Settings -> Secrets and variables -> Actions"
-              echo "вкладка Variables, уровень репозитория (не Environment)"
+              echo "SITE_URL не найден ни в Variables, ни в Secrets"
+              echo "job видит такие Variables: $VISIBLE_VARS"
+              echo "проверьте: Settings -> Secrets and variables -> Actions"
+              echo "Variables должны быть уровня репозитория, не Environment"
               exit 1
               ;;
           esac

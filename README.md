@@ -102,10 +102,16 @@ curl -s -H "X-Warmup-Token: $WARMUP_TOKEN" \
 переменная окружения `SITE_URL` → `http://localhost:8000`. Домен попадает в `canonical`, `sitemap.xml`
 и `robots.txt`.
 
-Подключили домен — задайте `SITE_URL` в переменных окружения сайта и в переменной репозитория
-`SITE_URL` (Settings → Variables → Actions), затем пересоберите данные и прогрейте кэш.
-**Для деплоя `SITE_URL` обязателен:** `deploy.yml` падает с сообщением, если переменная пуста или
-без `http(s)://`, — иначе на прод уехали бы `canonical` и `sitemap` с `localhost`.
+Подключили домен — задайте `SITE_URL` в переменных окружения сайта и в GitHub: **Variables**
+(Settings → Secrets and variables → Actions), уровень репозитория. Секрет тоже подойдёт: `deploy.yml`
+берет `vars.SITE_URL`, а если там пусто — `secrets.SITE_URL`.
+**Для деплоя `SITE_URL` обязателен:** `deploy.yml` падает с сообщением, если значения нет или оно
+без `http(s)://`, — иначе на прод уехали бы `canonical` и `sitemap` с `localhost`. В логе шага
+«Проверка SITE_URL» печатается длина и значение переменной, а при пустом значении — список
+переменных, которые job вообще видит.
+
+Если переменная заведена в **Environment**, job её не увидит: в `deploy.yml` нет `environment:`.
+Используйте уровень репозитория.
 
 ### Схема: https или http
 
