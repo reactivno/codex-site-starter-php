@@ -22,3 +22,6 @@ _site/
 /data/index.json
 /sitemap.xml
 /robots.txt
+
+# маркер схемы: создаётся deploy.yml, когда сайт работает по http
+/http-only.txt

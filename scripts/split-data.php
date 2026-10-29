@@ -43,11 +43,12 @@ foreach (array_slice($argv ?? [], 1) as $argument) {
 }
 
 // --site-url передан (даже пустым): канонический адрес не должен упасть на localhost.
-// Разрешён только абсолютный https-адрес без пути и слэша на конце.
+// Разрешён только абсолютный http(s)-адрес без пути и слэша на конце: схема зависит от
+// хостинга, а не от кода (сайт без TLS получает http-адрес, см. README).
 if (array_key_exists('site-url', $cliOptions)) {
     $value = trim((string) $cliOptions['site-url']);
-    if (preg_match('#^https://[a-z0-9.-]+$#i', $value) !== 1) {
-        fwrite(STDERR, "--site-url должен быть абсолютным https-адресом без пути и слэша: \"$value\"\n");
+    if (preg_match('#^https?://[a-z0-9.-]+$#i', $value) !== 1) {
+        fwrite(STDERR, "--site-url должен быть абсолютным http(s)-адресом без пути и слэша: \"$value\"\n");
         exit(1);
     }
 }

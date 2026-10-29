@@ -4,8 +4,8 @@
 Options -Indexes -MultiViews
 DirectoryIndex index.php
 
-# Dotfiles (.ftp-deploy-sync-state.json, .env и т.п.) наружу не отдаются.
-<FilesMatch "^\.">
+# Dotfiles (.ftp-deploy-sync-state.json, .env) и маркер схемы наружу не отдаются.
+<FilesMatch "^(\.|http-only\.txt$)">
   Require all denied
 </FilesMatch>
 
@@ -21,6 +21,9 @@ DirectoryIndex index.php
   RewriteRule ^(.+)/$ /$1 [R=301,L]
 
   # http -> https только вне localhost: не ломать локальную проверку и reverse-proxy.
+  # Сайт, настроенный на http (SITE_URL начинается с http://), получает в корне файл
+  # http-only.txt от deploy.yml — тогда редиректа нет и canonical тоже http.
+  RewriteCond %{DOCUMENT_ROOT}/http-only.txt !-f
   RewriteCond %{HTTPS} off
   RewriteCond %{HTTP:X-Forwarded-Proto} !https
   RewriteCond %{HTTP_HOST} !^localhost

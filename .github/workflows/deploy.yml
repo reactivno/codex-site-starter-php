@@ -31,14 +31,33 @@ jobs:
 
       - name: Проверка SITE_URL
         # Пустой SITE_URL отправил бы на прод canonical и sitemap с localhost.
+        # Схема может быть любой: http — только пока у хостинга нет TLS.
         env:
           SITE_URL: ${{ vars.SITE_URL }}
         run: |
           case "$SITE_URL" in
-            https://?*) ;;
+            http://?*|https://?*) ;;
             *)
-              echo "переменная репозитория SITE_URL пуста или без https://"
+              echo "переменная репозитория SITE_URL пуста или без http(s)://"
               exit 1
+              ;;
+          esac
+
+      - name: Настройка схемы
+        # Редирект http->https в .htaccess включается отсутствием маркера.
+        # Сайту на http кладём http-only.txt: иначе Apache уводил бы всех
+        # на https, которого у хостинга нет. Наружу не отдаётся (FilesMatch).
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          case "$SITE_URL" in
+            http://*)
+              echo "схема http: редирект на https выключен"
+              echo "http-only" > http-only.txt
+              ;;
+            *)
+              echo "схема https: редирект http -> https включён"
+              rm -f http-only.txt
               ;;
           esac
 

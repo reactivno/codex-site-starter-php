@@ -80,8 +80,9 @@ foreach ($files as $file) {
         || trim(strip_tags($match[1])) === '') {
         $problems[] = $name . ': нет <h1>';
     }
-    if (preg_match('#<link rel="canonical" href="(https://[^"]+)"#i', $html, $match) !== 1) {
-        $problems[] = $name . ': нет абсолютного <link rel="canonical" href="https://...">';
+    // Схема зависит от SITE_URL: http — временный режим, пока у хостинга нет TLS.
+    if (preg_match('#<link rel="canonical" href="(https?://[^"]+)"#i', $html, $match) !== 1) {
+        $problems[] = $name . ': нет абсолютного <link rel="canonical" href="http(s)://...">';
     }
 }
 
