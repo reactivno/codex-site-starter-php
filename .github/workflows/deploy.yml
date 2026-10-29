@@ -31,14 +31,25 @@ jobs:
 
       - name: Проверка SITE_URL
         # Пустой SITE_URL отправил бы на прод canonical и sitemap с localhost.
-        # Схема может быть любой: http — только пока у хостинга нет TLS.
+        # Схема может быть любой: http — пока у хостинга нет TLS.
+        # Значение печатаем и нормализуем: домен не секрет, а так видно,
+        # что в нём на самом деле (пробел, кавычки, заглавные).
         env:
-          SITE_URL: ${{ vars.SITE_URL }}
+          RAW_SITE_URL: ${{ vars.SITE_URL }}
         run: |
-          case "$SITE_URL" in
-            http://?*|https://?*) ;;
+          value="$RAW_SITE_URL"
+          value="${value//[[:space:]]/}"
+          value="${value//\"/}"
+          value="${value//\'/}"
+          printf 'SITE_URL: длина %s, значение [%s]\n' "${#value}" "$value"
+          case "${value,,}" in
+            http://?*|https://?*)
+              echo "SITE_URL=$value" >> "$GITHUB_ENV"
+              ;;
             *)
               echo "переменная репозитория SITE_URL пуста или без http(s)://"
+              echo "задать: Settings -> Secrets and variables -> Actions"
+              echo "вкладка Variables, уровень репозитория (не Environment)"
               exit 1
               ;;
           esac
@@ -47,10 +58,9 @@ jobs:
         # Редирект http->https в .htaccess включается отсутствием маркера.
         # Сайту на http кладём http-only.txt: иначе Apache уводил бы всех
         # на https, которого у хостинга нет. Наружу не отдаётся (FilesMatch).
-        env:
-          SITE_URL: ${{ vars.SITE_URL }}
+        # SITE_URL приходит из предыдущего шага, уже без пробелов.
         run: |
-          case "$SITE_URL" in
+          case "${SITE_URL,,}" in
             http://*)
               echo "схема http: редирект на https выключен"
               echo "http-only" > http-only.txt
@@ -64,8 +74,6 @@ jobs:
       - name: Данные страниц
         # canonical и sitemap собираются с доменом сайта: он в переменной
         # репозитория, а не в коде. Пустая переменная даёт адреса localhost.
-        env:
-          SITE_URL: ${{ vars.SITE_URL }}
         run: php scripts/split-data.php --site-url="$SITE_URL"
 
       - name: Загрузка на хостинг
