@@ -202,11 +202,17 @@ function sitemap_xml(array $pages, string $siteUrl): string
 }
 
 /**
- * robots.txt. Строка Sitemap имеет смысл только с настоящим доменом:
- * с localhost-заглушкой она уводит поисковик в никуда, поэтому её тогда нет.
+ * robots.txt. Пока сайт не открыли явно, он закрыт целиком: индексация —
+ * решение заказчика, а не следствие деплоя. Строка Sitemap имеет смысл только
+ * у открытого сайта с настоящим доменом: с localhost-заглушкой она уводит
+ * поисковик в никуда, поэтому её тогда нет.
  */
-function robots_txt(string $siteUrl, bool $withSitemap): string
+function robots_txt(string $siteUrl, bool $open, bool $withSitemap): string
 {
+    if (!$open) {
+        return "User-agent: *\nDisallow: /\n";
+    }
+
     $text = "User-agent: *\n";
     foreach (DENY_PREFIXES as $prefix) {
         $text .= 'Disallow: /' . $prefix . "/\n";

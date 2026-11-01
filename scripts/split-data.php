@@ -57,6 +57,13 @@ $siteUrl = site_url($cliOptions['site-url'] ?? null);
 $hasSiteUrl = trim((string) ($cliOptions['site-url'] ?? '')) !== '';
 $base = site_base($cliOptions['base'] ?? null);
 
+// Индексация выключена по умолчанию: свежевыложенный сайт не должен попасть
+// в поиск раньше, чем заказчик этого попросит. Открывают явно — флагом
+// --indexing=open (деплой передаёт его из переменной репозитория) или
+// переменной окружения ALLOW_INDEXING=1.
+$indexing = strtolower(trim((string) ($cliOptions['indexing'] ?? env_value('ALLOW_INDEXING'))));
+$openIndexing = in_array($indexing, ['open', '1', 'yes', 'true'], true);
+
 $errors = [];
 
 /** Ошибка с обязательным префиксом файла: видно, что именно читали. */
@@ -578,7 +585,7 @@ write_file(
 );
 
 write_file(SITEMAP_FILE, sitemap_xml(array_map(static fn (array $page): array => $page['data'], $pages), $siteUrl));
-write_file(ROBOTS_FILE, robots_txt($siteUrl, $hasSiteUrl));
+write_file(ROBOTS_FILE, robots_txt($siteUrl, $openIndexing, $hasSiteUrl));
 
 // Финальная проверка SEO: страница без входящих ссылок не проиндексируется.
 // Главная исключение (у неё по определению нет входящих).
@@ -595,4 +602,5 @@ if ($orphans !== []) {
     exit(1);
 }
 
-echo 'готово: ' . count($indexEntries) . " страниц\n";
+echo 'готово: ' . count($indexEntries) . ' страниц, индексация '
+    . ($openIndexing ? 'открыта' : 'закрыта') . "\n";
