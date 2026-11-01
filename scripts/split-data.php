@@ -400,6 +400,13 @@ foreach ($parsed['rows'] as $row) {
         }
     }
 
+    // Индексация закрыта глобально: тогда noindex получает каждая страница,
+    // даже если в CSV стоит 0. Одного ALLOW_INDEXING хватает на robots.txt,
+    // meta robots и sitemap — иначе закрытие надо помнить в трёх местах.
+    if (!$openIndexing) {
+        $noindex = 1;
+    }
+
     $values['noindex'] = $noindex;
     $pages[] = ['line' => $recordLine, 'data' => $values, 'valid' => $pathOk];
 }
