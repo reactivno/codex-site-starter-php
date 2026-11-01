@@ -78,6 +78,21 @@ jobs:
         # репозитория, а не в коде. Пустая переменная даёт адреса localhost.
         run: php scripts/split-data.php --site-url="$SITE_URL"
 
+      - name: Токен прогрева для хостинга
+        # Без токена прогрев и prune недоступны. PHP-FPM на хостинге может не
+        # видеть переменные окружения сайта, поэтому кладём токен dotfile'ом
+        # в корень: наружу его не отдаёт правило FilesMatch в .htaccess.
+        env:
+          WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}
+        run: |
+          if [ -z "$WARMUP_TOKEN" ]; then
+            echo "секрет WARMUP_TOKEN не задан"
+            exit 1
+          fi
+          # Перевод строки в секрете не должен попасть в файл и заголовок.
+          token=$(printf '%s' "$WARMUP_TOKEN" | tr -d '[:space:]')
+          printf '%s' "$token" > .warmup-token
+
       - name: Загрузка на хостинг
         uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
@@ -101,26 +116,17 @@ jobs:
             scripts/build.php
             scripts/check.php
 
-      - name: Проверка WARMUP_TOKEN
-        # Без токена прогрев и prune недоступны: лучше упасть здесь, чем
-        # выложить сайт с кэшем, который не обновить.
-        env:
-          WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}
-        run: |
-          if [ -z "$WARMUP_TOKEN" ]; then
-            echo "секрет WARMUP_TOKEN не задан"
-            exit 1
-          fi
-
       - name: Прогрев кэша
         # Apache отдаёт готовый HTML из cache/ напрямую: без прогрева правка
         # шаблона не долетит до посетителя. Число страниц — из count индекса,
         # прогреваем ровно столько, сколько страниц в data/index.json.
         env:
-          SITE_URL: ${{ vars.SITE_URL }}
           WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}
         run: |
           set -e
+          # Секрет мог приехать с хвостовым переводом строки: на хостинге
+          # env_value() срезает пробелы, тут их надо срезать самим.
+          token=$(printf '%s' "$WARMUP_TOKEN" | tr -d '[:space:]')
           index=data/index.json
           count=$(php -r '
             $d = json_decode(file_get_contents($argv[1]), true);
@@ -131,7 +137,7 @@ jobs:
             exit 1
           fi
           for ((from=0; from<count; from+=500)); do
-            answer=$(curl -fsS -H "X-Warmup-Token: ${WARMUP_TOKEN}" \
+            answer=$(curl -sS -H "X-Warmup-Token: ${token}" \
               "${SITE_URL}/scripts/warmup.php?from=${from}&limit=500")
             echo "$from: $answer"
             case "$answer" in
@@ -144,12 +150,22 @@ jobs:
         # Без prune страница, убранная из CSV, живёт в cache/ вечно и отдаётся
         # Apache напрямую (200 вместо 404). Вызываем один раз после прогрева.
         env:
-          SITE_URL: ${{ vars.SITE_URL }}
           WARMUP_TOKEN: ${{ secrets.WARMUP_TOKEN }}
         run: |
           set -e
-          # curl -f + set -e: при 403 (нет/другой токен) и при 500 (пустой
-          # индекс) шаг падает сам, дополнительно ловить нечего.
-          answer=$(curl -fsS -H "X-Warmup-Token: ${WARMUP_TOKEN}" \
+          token=$(printf '%s' "$WARMUP_TOKEN" | tr -d '[:space:]')
+          # Без -f видно тело 403: «403 Forbidden» — это warmup.php (токен),
+          # голое «Forbidden» — запрет Apache из .htaccess.
+          answer=$(curl -sS -w '\nHTTP %{http_code}' \
+            -H "X-Warmup-Token: ${token}" \
             "${SITE_URL}/scripts/warmup.php?prune=1")
           echo "$answer"
+          case "$answer" in
+            *"HTTP 200"*) ;;
+            *"HTTP 403"*)
+              echo "403: WARMUP_TOKEN в окружении сайта не совпадает с секретом"
+              echo "репозитория или .htaccess закрыл scripts/warmup.php"
+              exit 1
+              ;;
+            *) exit 1 ;;
+          esac

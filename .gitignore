@@ -25,3 +25,6 @@ _site/
 
 # маркер схемы: создаётся deploy.yml, когда сайт работает по http
 /http-only.txt
+
+# токен прогрева: создаётся deploy.yml, на хостинг едет по FTP
+/.warmup-token

@@ -154,9 +154,10 @@ Excel в русской локали пишет `;`). Первая строка 
 
 | Что | Где хранится |
 | --- | --- |
-| `MAIL_TO`, `MAIL_FROM`, `MAIL_SUBJECT_PREFIX`, `SITE_URL`, `SITE_BASE`, `WARMUP_TOKEN` | переменные окружения сайта на хостинге |
+| `MAIL_TO`, `MAIL_FROM`, `MAIL_SUBJECT_PREFIX`, `SITE_URL`, `SITE_BASE` | переменные окружения сайта на хостинге |
+| `WARMUP_TOKEN` на хостинге | файл `.warmup-token` в корне, его кладёт деплой (dotfile, наружу не отдаётся); переменная окружения сайта необязательна и имеет приоритет |
 | FTP-хост, логин, пароль (только прод) | GitHub Secrets |
-| `WARMUP_TOKEN` для вызова прогрева из CI | GitHub Secrets (то же значение, что на хостинге) |
+| `WARMUP_TOKEN` для вызова прогрева из CI | GitHub Secrets (его же деплой пишет в `.warmup-token`) |
 | `SITE_URL` для сборки данных в CI | GitHub Variables (домен не является секретом) |
 | Локальные значения | `.env` (в `.gitignore`), в репозиторий не попадает |
 
